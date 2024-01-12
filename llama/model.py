@@ -31,7 +31,7 @@ class ModelArgs:
     max_batch_size: int = 32
     max_seq_len: int = 2048
     fff_depth: int = 0
-    skip_ffn: bool = False
+    # skip_ffn: bool = False
 
 
 class RMSNorm(torch.nn.Module):
@@ -372,8 +372,9 @@ class FFF(nn.Module):
     def initialise_weights(self):
         init_factor_l1 = 1.0 / math.sqrt(self.input_width)
         init_factor_l2 = 1.0 / math.sqrt(self.depth + 1)
-        self.w1s = nn.Parameter(torch.empty(self.n_nodes, self.input_width).uniform_(-init_factor_l1, +init_factor_l1), requires_grad=True)
-        self.w2s = nn.Parameter(torch.empty(self.n_nodes, self.output_width).uniform_(-init_factor_l2, +init_factor_l2), requires_grad=True)
+        # torch.manual_seed(0)
+        self.w1s = nn.Parameter(torch.empty(self.n_nodes, self.input_width).uniform_(-init_factor_l1, +init_factor_l1), requires_grad=False)
+        self.w2s = nn.Parameter(torch.empty(self.n_nodes, self.output_width).uniform_(-init_factor_l2, +init_factor_l2), requires_grad=False)
 
     def forward(self, x):
         # the shape of x is (batch_size, input_width)
@@ -433,11 +434,11 @@ class TransformerBlock(nn.Module):
         self.dim = args.dim
         self.head_dim = args.dim // args.n_heads
         self.attention = Attention(args)
-        if args.skip_ffn:
+        if args.fff_depth == 0:
             self.feed_forward = SkippedFFN()
-        elif args.fff_depth:
+        elif args.fff_depth > 0:
             self.feed_forward = FFF(args.dim, args.fff_depth, args.dim)
-        else:
+        else: # fff_depth < 0
             self.feed_forward = FeedForward(
                 dim=args.dim,
                 hidden_dim=4 * args.dim,
