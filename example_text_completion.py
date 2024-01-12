@@ -5,6 +5,8 @@ import fire
 
 from llama import Llama
 from typing import List
+from time_measure import TimeMeasure
+import pdb
 
 def main(
     ckpt_dir: str,
@@ -38,32 +40,45 @@ def main(
 
     prompts: List[str] = [
         # For these prompts, the expected answer is the natural continuation of the prompt
-        "I believe the meaning of life is",
-        "Simply put, the theory of relativity states that ",
-        """A brief message congratulating the team on the launch:
+        # "I believe the meaning of life is",
+        # "Simply put, the theory of relativity states that ",
+        # """A brief message congratulating the team on the launch:
 
-        Hi everyone,
+        # Hi everyone,
         
-        I just """,
-        # Few shot prompt (providing a few examples before asking model to complete more);
-        """Translate English to French:
+        # I just """,
+        # # Few shot prompt (providing a few examples before asking model to complete more);
+        # """Translate English to French:
         
-        sea otter => loutre de mer
-        peppermint => menthe poivrée
-        plush girafe => girafe peluche
-        cheese =>""",
+        # sea otter => loutre de mer
+        # peppermint => menthe poivrée
+        # plush girafe => girafe peluche
+        # cheese =>""",
+        "it",
+        # "The answer to life, the universe, and everything is the answer to life universe",
+        # "The story begins with a poor boy living in a country with a stunning princess",
+        # "it is my destiny",
     ]
+    prompts = ["it"] * max_batch_size
+    tm = TimeMeasure()
+    tm.set_prefix('llama7b')
+    tm.start_measure("generation")
     results = generator.text_completion(
         prompts,
         max_gen_len=max_gen_len,
         temperature=temperature,
         top_p=top_p,
     )
+    tm.end_measure("generation")
+    # print(f"Results are {results}")
+    times = tm.all_times()
+    with open('time.txt', 'w') as file:
+        file.write(str(times['llama7b']['generation'][0]))
+    # pdb.set_trace()
     for prompt, result in zip(prompts, results):
         print(prompt)
         print(f"> {result['generation']}")
         print("\n==================================\n")
-
 
 if __name__ == "__main__":
     fire.Fire(main)
