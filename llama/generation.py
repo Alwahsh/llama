@@ -10,6 +10,7 @@ from typing import List, Literal, Optional, Tuple, TypedDict
 import pdb
 import torch
 import torch.nn.functional as F
+from time_measure import TimeMeasure
 from fairscale.nn.model_parallel.initialize import (
     get_model_parallel_rank,
     initialize_model_parallel,
@@ -57,6 +58,7 @@ class Llama:
         max_batch_size: int,
         model_parallel_size: Optional[int] = None,
         seed: int = 1,
+        disable_eos: bool = False,
     ) -> "Llama":
         """
         Build a Llama instance by initializing and loading a pre-trained model.
@@ -123,11 +125,12 @@ class Llama:
         # torch.nn.init.normal_(model.weight, std=0.02)
         print(f"Loaded in {time.time() - start_time:.2f} seconds")
 
-        return Llama(model, tokenizer)
+        return Llama(model, tokenizer, disable_eos)
 
-    def __init__(self, model: Transformer, tokenizer: Tokenizer):
+    def __init__(self, model: Transformer, tokenizer: Tokenizer, disable_eos: bool):
         self.model = model
         self.tokenizer = tokenizer
+        self.disable_eos = disable_eos
 
     @torch.inference_mode()
     def generate(
@@ -138,6 +141,7 @@ class Llama:
         top_p: float = 0.9,
         logprobs: bool = False,
         echo: bool = False,
+        tm: Optional[TimeMeasure] = None,
     ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
         """
         Generate text sequences based on provided prompts using the language generation model.
@@ -165,7 +169,7 @@ class Llama:
         min_prompt_len = min(len(t) for t in prompt_tokens)
         max_prompt_len = max(len(t) for t in prompt_tokens)
         assert max_prompt_len <= params.max_seq_len
-        total_len = min(params.max_seq_len, max_gen_len + max_prompt_len)
+        total_len = min(params.max_seq_len, max_gen_len + max_prompt_len) # NOTE: This is the line that sets the maximum length.
 
         pad_id = self.tokenizer.pad_id
         tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device="cuda")
@@ -187,7 +191,17 @@ class Llama:
             )
 
         for cur_pos in range(min_prompt_len, total_len):
+            if tm is not None:
+                if prev_pos == 0:
+                    tm.start_measure("prefill")
+                else:
+                    tm.start_measure("decode")
             logits = self.model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
+            if tm is not None:
+                if prev_pos == 0:
+                    tm.end_measure("prefill")
+                else:
+                    tm.end_measure("decode")
             if temperature > 0:
                 probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
                 next_token = sample_top_p(probs, top_p)
@@ -207,11 +221,15 @@ class Llama:
                     reduction="none",
                     ignore_index=pad_id,
                 )
-            eos_reached |= (~input_text_mask[:, cur_pos]) & (
-                next_token == self.tokenizer.eos_id
-            )
+            if self.disable_eos:
+                eos_reached = torch.zeros_like(eos_reached)
+            else:
+                eos_reached |= (~input_text_mask[:, cur_pos]) & (
+                    next_token == self.tokenizer.eos_id
+                )
             prev_pos = cur_pos
             if all(eos_reached):
+                print('terminating due to eos')
                 break
 
         if logprobs:
@@ -225,10 +243,11 @@ class Llama:
             if logprobs:
                 probs = token_logprobs[i][start : len(prompt_tokens[i]) + max_gen_len]
             # cut to eos tok if any
-            if self.tokenizer.eos_id in toks:
-                eos_idx = toks.index(self.tokenizer.eos_id)
-                toks = toks[:eos_idx]
-                probs = probs[:eos_idx] if logprobs else None
+            if not(self.disable_eos):
+                if self.tokenizer.eos_id in toks:
+                    eos_idx = toks.index(self.tokenizer.eos_id)
+                    toks = toks[:eos_idx]
+                    probs = probs[:eos_idx] if logprobs else None
             out_tokens.append(toks)
             out_logprobs.append(probs)
         return (out_tokens, out_logprobs if logprobs else None)
@@ -241,6 +260,7 @@ class Llama:
         max_gen_len: Optional[int] = None,
         logprobs: bool = False,
         echo: bool = False,
+        tm: Optional[TimeMeasure] = None,
     ) -> List[CompletionPrediction]:
         """
         Perform text completion for a list of prompts using the language generation model.
@@ -273,6 +293,7 @@ class Llama:
             top_p=top_p,
             logprobs=logprobs,
             echo=echo,
+            tm=tm,
         )
         if logprobs:
             return [

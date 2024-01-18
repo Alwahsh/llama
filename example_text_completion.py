@@ -14,8 +14,10 @@ def main(
     temperature: float = 0.6,
     top_p: float = 0.9,
     max_seq_len: int = 128,
-    max_gen_len: int = 64,
+    max_gen_len: int = 123124124124,
     max_batch_size: int = 4,
+    disable_eos: bool = False,
+    in_seq_len: int = 1,
 ):
     """
     Entry point of the program for generating text using a pretrained model.
@@ -36,6 +38,7 @@ def main(
         tokenizer_path=tokenizer_path,
         max_seq_len=max_seq_len,
         max_batch_size=max_batch_size,
+        disable_eos=disable_eos,
     )
 
     prompts: List[str] = [
@@ -59,21 +62,35 @@ def main(
         # "The story begins with a poor boy living in a country with a stunning princess",
         # "it is my destiny",
     ]
-    prompts = ["it"] * max_batch_size
+    text = ""
+    for _ in range(1,in_seq_len):
+        text += "it "
+    text = text.strip()
+    prompts = [text] * max_batch_size
+    # Repeat the completion 10 times first.
+    for _ in range(10):
+        generator.text_completion(
+            prompts,
+            max_gen_len=max_gen_len,
+            temperature=temperature,
+            top_p=top_p,
+        )
     tm = TimeMeasure()
     tm.set_prefix('llama7b')
-    tm.start_measure("generation")
     results = generator.text_completion(
         prompts,
         max_gen_len=max_gen_len,
         temperature=temperature,
         top_p=top_p,
+        tm=tm,
     )
-    tm.end_measure("generation")
     # print(f"Results are {results}")
+    # pdb.set_trace()
     times = tm.all_times()
-    with open('time.txt', 'w') as file:
-        file.write(str(times['llama7b']['generation'][0]))
+    with open('time_prefill.txt', 'w') as file:
+        file.write(str(times['llama7b']['prefill'][0]))
+    with open('time_decode.txt', 'w') as file:
+        file.write(str(sum(times['llama7b']['decode'])))
     # pdb.set_trace()
     for prompt, result in zip(prompts, results):
         print(prompt)
