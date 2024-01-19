@@ -12,7 +12,7 @@ mkdir -p $simulated_dir
 
 destination_file="$simulated_dir/params.json"
 
-num_iterations=10
+num_iterations=1
 
 compression_types=(0 1)
 
@@ -44,11 +44,13 @@ for ((i=1; i<=$num_iterations; i++)); do
                         sed -i "s/TEMP_FFF_DEPTH/$fff_depth/g" "$destination_file"
 
                         torchrun --nproc_per_node $mp_val ./../example_text_completion.py --ckpt_dir $simulated_dir/ --tokenizer_path ./../tokenizer.model --max_seq_len $gen_len --max_gen_len $gen_len --max_batch_size $batch_size --disable_eos 1 --in_seq_len $in_seq_len --compression_type $compression_type
-                        measured_time_prefill=$(cat time_prefill.txt)
-                        measured_time_decode=$(cat time_decode.txt)
-                        echo "-1" > time_prefill.txt
-                        echo "-1" > time_decode.txt
-                        echo "$batch_size,$compression_type,$gen_len,$in_seq_len,$measured_time_prefill,$measured_time_decode" >> $output_csv
+                        for ((k=0; k<10; k++)); do
+                            measured_time_prefill=$(cat time_prefill_$k.txt)
+                            measured_time_decode=$(cat time_decode_$k.txt)
+                            echo "-1" > time_prefill_$k.txt
+                            echo "-1" > time_decode_$k.txt
+                            echo "$batch_size,$compression_type,$gen_len,$in_seq_len,$measured_time_prefill,$measured_time_decode" >> $output_csv
+                        done
                     done
                 fi
             done

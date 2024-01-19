@@ -78,21 +78,23 @@ def main(
             top_p=top_p,
         )
     tm = TimeMeasure()
-    tm.set_prefix('llama7b')
-    results = generator.text_completion(
-        prompts,
-        max_gen_len=max_gen_len,
-        temperature=temperature,
-        top_p=top_p,
-        tm=tm,
-    )
-    # print(f"Results are {results}")
-    # pdb.set_trace()
-    times = tm.all_times()
-    with open('time_prefill.txt', 'w') as file:
-        file.write(str(times['llama7b']['prefill'][0]))
-    with open('time_decode.txt', 'w') as file:
-        file.write(str(sum(times['llama7b']['decode'])))
+    for i in range(10):
+        tm.set_prefix('llama7b')
+        results = generator.text_completion(
+            prompts,
+            max_gen_len=max_gen_len,
+            temperature=temperature,
+            top_p=top_p,
+            tm=tm,
+        )
+        # print(f"Results are {results}")
+        # pdb.set_trace()
+        times = tm.all_times()
+        with open(f'time_prefill_{i}.txt', 'w') as file:
+            file.write(str(times['llama7b']['prefill'][0]))
+        with open(f'time_decode_{i}.txt', 'w') as file:
+            file.write(str(sum(times['llama7b']['decode'])))
+        tm.reset_stats()
     # pdb.set_trace()
     for prompt, result in zip(prompts, results):
         print(prompt)
