@@ -5,6 +5,10 @@ import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
 import pdb
+# from pyzfp import compress, decompress
+import zfpy
+import numpy as np
+import pickle
 
 import fairscale.nn.model_parallel.initialize as fs_init
 import torch
@@ -31,6 +35,7 @@ class ModelArgs:
     max_batch_size: int = 32
     max_seq_len: int = 2048
     fff_depth: int = 0
+    compression_type: int = -1
     # skip_ffn: bool = False
 
 
@@ -206,6 +211,7 @@ class Attention(nn.Module):
         self.n_local_kv_heads = self.n_kv_heads // model_parallel_size
         self.n_rep = self.n_local_heads // self.n_local_kv_heads
         self.head_dim = args.dim // args.n_heads
+        self.compression_type = args.compression_type
 
         self.wq = ColumnParallelLinear(
             args.dim,
@@ -287,6 +293,42 @@ class Attention(nn.Module):
 
         self.cache_k[:bsz, start_pos : start_pos + seqlen] = xk
         self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
+
+        # pdb.set_trace()
+        if self.compression_type != -1:
+            with open('k_cache.pkl', 'wb') as file:
+                if self.compression_type == 1:
+                    pickle.dump(zfpy.compress_numpy(self.cache_k.to(torch.float32).cpu().numpy()), file)
+                elif self.compression_type == 0:
+                    pickle.dump(self.cache_k.to(torch.float32).cpu().numpy(), file)
+                else:
+                    raise "Wrong compression_type"
+
+            with open('v_cache.pkl', 'wb') as file:
+                if self.compression_type == 1:
+                    pickle.dump(zfpy.compress_numpy(self.cache_v.to(torch.float32).cpu().numpy()), file)
+                elif self.compression_type == 0:
+                    pickle.dump(self.cache_v.to(torch.float32).cpu().numpy(), file)
+                else:
+                    raise "Wrong compression_type"
+
+            with open('k_cache.pkl', 'rb') as file:
+                if self.compression_type == 1:
+                    self.cache_k = torch.from_numpy(zfpy.decompress_numpy(pickle.load(file))).to(xq)
+                elif self.compression_type == 0:
+                    self.cache_k = torch.from_numpy(pickle.load(file)).to(xq)
+                else:
+                    raise "Wrong compression_type"
+
+            with open('v_cache.pkl', 'rb') as file:
+                if self.compression_type == 1:
+                    # print("Compression Type = 1")
+                    self.cache_v = torch.from_numpy(zfpy.decompress_numpy(pickle.load(file))).to(xq)
+                elif self.compression_type == 0:
+                    # print("Compression Type = 0")
+                    self.cache_k = torch.from_numpy(pickle.load(file)).to(xq)
+                else:
+                    raise "Wrong compression_type"
 
         keys = self.cache_k[:bsz, : start_pos + seqlen]
         values = self.cache_v[:bsz, : start_pos + seqlen]

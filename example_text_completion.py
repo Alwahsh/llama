@@ -18,6 +18,7 @@ def main(
     max_batch_size: int = 4,
     disable_eos: bool = False,
     in_seq_len: int = 1,
+    compression_type: int = -1, # -1 = normal code without considering compression at all. 0 = perform needed conversions but don't compress. 1 = perform needed operations and compress.
 ):
     """
     Entry point of the program for generating text using a pretrained model.
@@ -39,6 +40,7 @@ def main(
         max_seq_len=max_seq_len,
         max_batch_size=max_batch_size,
         disable_eos=disable_eos,
+        compression_type = compression_type,
     )
 
     prompts: List[str] = [

@@ -59,6 +59,7 @@ class Llama:
         model_parallel_size: Optional[int] = None,
         seed: int = 1,
         disable_eos: bool = False,
+        compression_type: int = -1,
     ) -> "Llama":
         """
         Build a Llama instance by initializing and loading a pre-trained model.
@@ -113,6 +114,7 @@ class Llama:
         model_args: ModelArgs = ModelArgs(
             max_seq_len=max_seq_len,
             max_batch_size=max_batch_size,
+            compression_type=compression_type,
             **params,
         )
         tokenizer = Tokenizer(model_path=tokenizer_path)
