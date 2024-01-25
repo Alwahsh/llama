@@ -19,6 +19,9 @@ def main(
     disable_eos: bool = False,
     in_seq_len: int = 1,
     compression_type: int = -1, # -1 = normal code without considering compression at all. 0 = perform needed conversions but don't compress. 1 = perform needed operations and compress.
+    compression_attribute: int = 10,
+    warmup_iterations: int = 10,
+    measured_iterations: int = 10,
 ):
     """
     Entry point of the program for generating text using a pretrained model.
@@ -41,6 +44,7 @@ def main(
         max_batch_size=max_batch_size,
         disable_eos=disable_eos,
         compression_type = compression_type,
+        compression_attribute = compression_attribute,
     )
 
     prompts: List[str] = [
@@ -59,18 +63,18 @@ def main(
         # peppermint => menthe poivrée
         # plush girafe => girafe peluche
         # cheese =>""",
-        "it",
+        "it is my destiny",
         # "The answer to life, the universe, and everything is the answer to life universe",
         # "The story begins with a poor boy living in a country with a stunning princess",
         # "it is my destiny",
     ]
     text = ""
     for _ in range(1,in_seq_len):
-        text += "it "
+        text += "it"
     text = text.strip()
     prompts = [text] * max_batch_size
     # Repeat the completion 10 times first.
-    for _ in range(10):
+    for _ in range(warmup_iterations):
         generator.text_completion(
             prompts,
             max_gen_len=max_gen_len,
@@ -78,7 +82,7 @@ def main(
             top_p=top_p,
         )
     tm = TimeMeasure()
-    for i in range(10):
+    for i in range(measured_iterations):
         tm.set_prefix('llama7b')
         results = generator.text_completion(
             prompts,
@@ -95,6 +99,8 @@ def main(
         with open(f'time_decode_{i}.txt', 'w') as file:
             file.write(str(sum(times['llama7b']['decode'])))
         tm.reset_stats()
+        with open(f'response_{i}.txt', 'w') as file:
+            file.write(results[0]["generation"].replace("\n","\\n"))
     # pdb.set_trace()
     for prompt, result in zip(prompts, results):
         print(prompt)

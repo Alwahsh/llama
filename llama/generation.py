@@ -60,6 +60,7 @@ class Llama:
         seed: int = 1,
         disable_eos: bool = False,
         compression_type: int = -1,
+        compression_attribute: int = 10,
     ) -> "Llama":
         """
         Build a Llama instance by initializing and loading a pre-trained model.
@@ -102,12 +103,12 @@ class Llama:
 
         start_time = time.time()
         checkpoints = sorted(Path(ckpt_dir).glob("*.pth"))
-        # assert len(checkpoints) > 0, f"no checkpoint files found in {ckpt_dir}"
-        # assert model_parallel_size == len(
-            # checkpoints
-        # ), f"Loading a checkpoint for MP={len(checkpoints)} but world size is {model_parallel_size}"
-        # ckpt_path = checkpoints[get_model_parallel_rank()]
-        # checkpoint = torch.load(ckpt_path, map_location="cpu")
+        assert len(checkpoints) > 0, f"no checkpoint files found in {ckpt_dir}"
+        assert model_parallel_size == len(
+            checkpoints
+        ), f"Loading a checkpoint for MP={len(checkpoints)} but world size is {model_parallel_size}"
+        ckpt_path = checkpoints[get_model_parallel_rank()]
+        checkpoint = torch.load(ckpt_path, map_location="cpu")
         with open(Path(ckpt_dir) / "params.json", "r") as f:
             params = json.loads(f.read())
 
@@ -115,14 +116,15 @@ class Llama:
             max_seq_len=max_seq_len,
             max_batch_size=max_batch_size,
             compression_type=compression_type,
+            compression_attribute=compression_attribute,
             **params,
         )
         tokenizer = Tokenizer(model_path=tokenizer_path)
         model_args.vocab_size = tokenizer.n_words
         torch.set_default_tensor_type(torch.cuda.HalfTensor)
         model = Transformer(model_args)
-        # Disable loading from the checkpoint to get random weights.
-        # model.load_state_dict(checkpoint, strict=False)
+        # Disable loading from the checkpoint to get random weights by commenting the line below.
+        model.load_state_dict(checkpoint, strict=False)
         # pdb.set_trace()
         # torch.nn.init.normal_(model.weight, std=0.02)
         print(f"Loaded in {time.time() - start_time:.2f} seconds")
