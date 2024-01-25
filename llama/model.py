@@ -34,8 +34,9 @@ class ModelArgs:
 
     max_batch_size: int = 32
     max_seq_len: int = 2048
-    fff_depth: int = 0
+    fff_depth: int = -1
     compression_type: int = -1
+    compression_attribute: int = 10
     # skip_ffn: bool = False
 
 
@@ -212,6 +213,8 @@ class Attention(nn.Module):
         self.n_rep = self.n_local_heads // self.n_local_kv_heads
         self.head_dim = args.dim // args.n_heads
         self.compression_type = args.compression_type
+        self.max_seq_len = args.max_seq_len
+        self.compression_attribute = args.compression_attribute
 
         self.wq = ColumnParallelLinear(
             args.dim,
@@ -258,8 +261,22 @@ class Attention(nn.Module):
                 self.head_dim,
             )
         ).cuda()
+    
+    def compress(self, compression_type: int, compression_attribute: int):
+        if compression_type == 1: # Lossless
+            self.compressed_k = zfpy.compress_numpy(self.cache_k.to(torch.float32).cpu().numpy())
+            self.compressed_v = zfpy.compress_numpy(self.cache_v.to(torch.float32).cpu().numpy())
+        elif compression_type == 2: # Precision
+            self.compressed_k = zfpy.compress_numpy(self.cache_k.to(torch.float32).cpu().numpy(), precision=compression_attribute)
+            self.compressed_v = zfpy.compress_numpy(self.cache_v.to(torch.float32).cpu().numpy(), precision=compression_attribute)
+        elif compression_type == 3: # Rate
+            self.compressed_k = zfpy.compress_numpy(self.cache_k.to(torch.float32).cpu().numpy(), rate=compression_attribute)
+            self.compressed_v = zfpy.compress_numpy(self.cache_v.to(torch.float32).cpu().numpy(), rate=compression_attribute)
+        elif compression_type == 4: # Tolerance
+            self.compressed_k = zfpy.compress_numpy(self.cache_k.to(torch.float32).cpu().numpy(), tolerance=compression_attribute)
+            self.compressed_v = zfpy.compress_numpy(self.cache_v.to(torch.float32).cpu().numpy(), tolerance=compression_attribute)        
 
-    def forward(
+    def forward( 
         self,
         x: torch.Tensor,
         start_pos: int,
@@ -295,40 +312,39 @@ class Attention(nn.Module):
         self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
 
         # pdb.set_trace()
+        # print(start_pos)
         if self.compression_type != -1:
-            with open('k_cache.pkl', 'wb') as file:
-                if self.compression_type == 1:
-                    pickle.dump(zfpy.compress_numpy(self.cache_k.to(torch.float32).cpu().numpy()), file)
-                elif self.compression_type == 0:
-                    pickle.dump(self.cache_k.to(torch.float32).cpu().numpy(), file)
-                else:
-                    raise "Wrong compression_type"
+            self.compress(self.compression_type, self.compression_attribute)
+            if start_pos == self.max_seq_len - 2:
+                with open('k_cache.pkl', 'wb') as file:
+                    if self.compression_type != 0:
+                        pickle.dump(self.compressed_k, file)
+                    else:
+                        pickle.dump(self.cache_k.to(torch.float32).cpu().numpy(), file)
 
-            with open('v_cache.pkl', 'wb') as file:
-                if self.compression_type == 1:
-                    pickle.dump(zfpy.compress_numpy(self.cache_v.to(torch.float32).cpu().numpy()), file)
-                elif self.compression_type == 0:
-                    pickle.dump(self.cache_v.to(torch.float32).cpu().numpy(), file)
-                else:
-                    raise "Wrong compression_type"
+                with open('v_cache.pkl', 'wb') as file:
+                    if self.compression_type != 0:
+                        pickle.dump(self.compressed_v, file)
+                    else:
+                        pickle.dump(self.cache_v.to(torch.float32).cpu().numpy(), file)
 
-            with open('k_cache.pkl', 'rb') as file:
-                if self.compression_type == 1:
-                    self.cache_k = torch.from_numpy(zfpy.decompress_numpy(pickle.load(file))).to(xq)
-                elif self.compression_type == 0:
-                    self.cache_k = torch.from_numpy(pickle.load(file)).to(xq)
-                else:
-                    raise "Wrong compression_type"
+                with open('k_cache.pkl', 'rb') as file:
+                    if self.compression_type != 0:
+                        self.cache_k = torch.from_numpy(zfpy.decompress_numpy(pickle.load(file))).to(xq)
+                    else:
+                        self.cache_k = torch.from_numpy(pickle.load(file)).to(xq)
 
-            with open('v_cache.pkl', 'rb') as file:
-                if self.compression_type == 1:
-                    # print("Compression Type = 1")
-                    self.cache_v = torch.from_numpy(zfpy.decompress_numpy(pickle.load(file))).to(xq)
-                elif self.compression_type == 0:
-                    # print("Compression Type = 0")
-                    self.cache_k = torch.from_numpy(pickle.load(file)).to(xq)
-                else:
-                    raise "Wrong compression_type"
+                with open('v_cache.pkl', 'rb') as file:
+                    if self.compression_type != 0:
+                        # print("Compression Type = 1")
+                        self.cache_v = torch.from_numpy(zfpy.decompress_numpy(pickle.load(file))).to(xq)
+                    else:
+                        # print("Compression Type = 0")
+                        self.cache_v = torch.from_numpy(pickle.load(file)).to(xq)
+            # Fetch kv values from the compressed if there's compression.
+            elif self.compression_type != 0:
+                self.cache_k = torch.from_numpy(zfpy.decompress_numpy(self.compressed_k)).to(xq)
+                self.cache_v = torch.from_numpy(zfpy.decompress_numpy(self.compressed_v)).to(xq)
 
         keys = self.cache_k[:bsz, : start_pos + seqlen]
         values = self.cache_v[:bsz, : start_pos + seqlen]
@@ -391,6 +407,7 @@ class FeedForward(nn.Module):
 
     def forward(self, x):
         # pdb.set_trace()
+        # print(x.shape)
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
 
 class SkippedFFN(nn.Module):
