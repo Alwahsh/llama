@@ -8,6 +8,7 @@ class TimeMeasure:
         self.start_times = {}
         self.initial_time = time.perf_counter()
         self.current_prefix = None
+        self.tracking = True
 
     def set_prefix(self, prefix):
         self.current_prefix = prefix
@@ -29,10 +30,14 @@ class TimeMeasure:
             return self.start_times[self.current_prefix]        
 
     def start_measure(self, name):
+        if not(self.tracking):
+            return
         t = time.perf_counter()
         self.cur_start_times()[name] = t
     
     def end_measure(self, name):
+        if not(self.tracking):
+            return
         cur_time = time.perf_counter() - self.cur_start_times()[name]
         if name in self.cur_times():
             self.cur_times()[name].append(cur_time)
@@ -56,6 +61,12 @@ class TimeMeasure:
                 res+= t[-1]
 
         return res
+
+    def disable_tracking(self):
+        self.tracking = False
+    
+    def enable_tracking(self):
+        self.tracking = True
 
     # TODO: This should become more generic.
     def add_time_to_last(self, name, cur_time):

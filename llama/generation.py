@@ -58,6 +58,9 @@ class Llama:
         max_batch_size: int,
         model_parallel_size: Optional[int] = None,
         seed: int = 1,
+        tm: TimeMeasure = None,
+        load_weights: bool = True,
+        fff_depth: int = -1,
         disable_eos: bool = False,
         compression_type: int = -1,
         compression_attribute: int = 10,
@@ -117,6 +120,8 @@ class Llama:
             max_batch_size=max_batch_size,
             compression_type=compression_type,
             compression_attribute=compression_attribute,
+            tm=tm,
+            fff_depth=fff_depth,
             **params,
         )
         tokenizer = Tokenizer(model_path=tokenizer_path)
@@ -124,7 +129,8 @@ class Llama:
         torch.set_default_tensor_type(torch.cuda.HalfTensor)
         model = Transformer(model_args)
         # Disable loading from the checkpoint to get random weights by commenting the line below.
-        model.load_state_dict(checkpoint, strict=False)
+        if load_weights:
+            model.load_state_dict(checkpoint, strict=False)
         # pdb.set_trace()
         # torch.nn.init.normal_(model.weight, std=0.02)
         print(f"Loaded in {time.time() - start_time:.2f} seconds")
@@ -145,7 +151,7 @@ class Llama:
         top_p: float = 0.9,
         logprobs: bool = False,
         echo: bool = False,
-        tm: Optional[TimeMeasure] = None,
+        track_performance: bool = False,
     ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
         """
         Generate text sequences based on provided prompts using the language generation model.
@@ -167,6 +173,11 @@ class Llama:
 
         """
         params = self.model.params
+        tm = params.tm
+        if track_performance:
+            tm.enable_tracking()
+        else:
+            tm.disable_tracking()
         bsz = len(prompt_tokens)
         assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
 
@@ -197,15 +208,14 @@ class Llama:
         for cur_pos in range(min_prompt_len, total_len):
             if tm is not None:
                 if prev_pos == 0:
-                    tm.start_measure("prefill")
+                    tm.set_prefix("prefill")
+                    tm.start_measure("total")
                 else:
-                    tm.start_measure("decode")
+                    tm.set_prefix("decode")
+                    tm.start_measure("total")
             logits = self.model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
             if tm is not None:
-                if prev_pos == 0:
-                    tm.end_measure("prefill")
-                else:
-                    tm.end_measure("decode")
+                tm.end_measure("total")
             if temperature > 0:
                 probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
                 next_token = sample_top_p(probs, top_p)
@@ -264,7 +274,7 @@ class Llama:
         max_gen_len: Optional[int] = None,
         logprobs: bool = False,
         echo: bool = False,
-        tm: Optional[TimeMeasure] = None,
+        track_performance = False,
     ) -> List[CompletionPrediction]:
         """
         Perform text completion for a list of prompts using the language generation model.
@@ -297,7 +307,7 @@ class Llama:
             top_p=top_p,
             logprobs=logprobs,
             echo=echo,
-            tm=tm,
+            track_performance=track_performance,
         )
         if logprobs:
             return [

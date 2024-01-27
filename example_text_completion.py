@@ -17,6 +17,8 @@ def main(
     max_gen_len: int = 123124124124,
     max_batch_size: int = 4,
     disable_eos: bool = False,
+    fff_depth: int = -1,
+    load_weights: bool = True,
     in_seq_len: int = 1,
     compression_type: int = -1, # -1 = normal code without considering compression at all. 0 = perform needed conversions but don't compress. 1 = perform needed operations and compress.
     compression_attribute: int = 10,
@@ -37,11 +39,15 @@ def main(
         max_gen_len (int, optional): The maximum length of generated sequences. Defaults to 64.
         max_batch_size (int, optional): The maximum batch size for generating sequences. Defaults to 4.
     """ 
+    tm = TimeMeasure()
     generator = Llama.build(
         ckpt_dir=ckpt_dir,
         tokenizer_path=tokenizer_path,
         max_seq_len=max_seq_len,
         max_batch_size=max_batch_size,
+        tm=tm,
+        fff_depth=fff_depth,
+        load_weights=load_weights,
         disable_eos=disable_eos,
         compression_type = compression_type,
         compression_attribute = compression_attribute,
@@ -70,7 +76,7 @@ def main(
     ]
     text = ""
     for _ in range(1,in_seq_len):
-        text += "it"
+        text += "it "
     text = text.strip()
     prompts = [text] * max_batch_size
     # Repeat the completion 10 times first.
@@ -80,24 +86,47 @@ def main(
             max_gen_len=max_gen_len,
             temperature=temperature,
             top_p=top_p,
+            track_performance = False,
         )
-    tm = TimeMeasure()
     for i in range(measured_iterations):
-        tm.set_prefix('llama7b')
         results = generator.text_completion(
             prompts,
             max_gen_len=max_gen_len,
             temperature=temperature,
             top_p=top_p,
-            tm=tm,
+            track_performance = True,
         )
         # print(f"Results are {results}")
         # pdb.set_trace()
         times = tm.all_times()
         with open(f'time_prefill_{i}.txt', 'w') as file:
-            file.write(str(times['llama7b']['prefill'][0]))
+            file.write(str(times['prefill']['total'][0]))
         with open(f'time_decode_{i}.txt', 'w') as file:
-            file.write(str(sum(times['llama7b']['decode'])))
+            file.write(str(sum(times['decode']['total'])))
+        with open(f'prefill_time_rms_norm_{i}.txt', 'w') as file:
+            file.write(str(sum(times['prefill']['rms_norm'])))
+        with open(f'prefill_time_attention_{i}.txt', mode='w') as file:
+            file.write(str(sum(times['prefill']['attention'])))
+        if 'ffn' in times['prefill']:
+            with open(f'prefill_time_ffn_{i}.txt', mode='w') as file:
+                file.write(str(sum(times['prefill']['ffn'])))
+        with open(f'prefill_time_transformer_block_{i}.txt', 'w') as file:
+            file.write(str(sum(times['prefill']['transformer_block'])))
+        with open(f'prefill_time_transformer_{i}.txt', 'w') as file:    
+            file.write(str(sum(times['prefill']['transformer'])))
+        with open(f'decode_time_rms_norm_{i}.txt', 'w') as file:
+            file.write(str(sum(times['decode']['rms_norm'])))
+        with open(f'decode_time_attention_{i}.txt', mode='w') as file:
+            file.write(str(sum(times['decode']['attention'])))
+        if 'ffn' in times['decode']:
+            with open(f'decode_time_ffn_{i}.txt', mode='w') as file:
+                file.write(str(sum(times['decode']['ffn'])))
+        with open(f'decode_time_transformer_block_{i}.txt', 'w') as file:
+            file.write(str(sum(times['decode']['transformer_block'])))
+        with open(f'decode_time_transformer_{i}.txt', 'w') as file:    
+            file.write(str(sum(times['decode']['transformer'])))
+
+        # pdb.set_trace()
         tm.reset_stats()
         with open(f'response_{i}.txt', 'w') as file:
             file.write(results[0]["generation"].replace("\n","\\n"))

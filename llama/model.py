@@ -9,6 +9,7 @@ import pdb
 import zfpy
 import numpy as np
 import pickle
+from time_measure import TimeMeasure
 
 import fairscale.nn.model_parallel.initialize as fs_init
 import torch
@@ -34,14 +35,16 @@ class ModelArgs:
 
     max_batch_size: int = 32
     max_seq_len: int = 2048
+
+    tm: TimeMeasure = None
+
     fff_depth: int = -1
     compression_type: int = -1
     compression_attribute: int = 10
     # skip_ffn: bool = False
 
-
 class RMSNorm(torch.nn.Module):
-    def __init__(self, dim: int, eps: float = 1e-6):
+    def __init__(self, dim: int, eps: float = 1e-6, tm: TimeMeasure = None):
         """
         Initialize the RMSNorm normalization layer.
 
@@ -57,6 +60,7 @@ class RMSNorm(torch.nn.Module):
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
+        self.tm = tm
 
     def _norm(self, x):
         """
@@ -82,8 +86,13 @@ class RMSNorm(torch.nn.Module):
             torch.Tensor: The output tensor after applying RMSNorm.
 
         """
+        if self.tm is not None:
+            self.tm.start_measure('rms_norm')
         output = self._norm(x.float()).type_as(x)
-        return output * self.weight
+        res = output * self.weight
+        if self.tm is not None:
+            self.tm.end_measure('rms_norm')
+        return res
 
 
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
@@ -111,7 +120,6 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
     freqs = torch.outer(t, freqs).float()  # type: ignore
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
     return freqs_cis
-
 
 def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
     """
@@ -215,6 +223,7 @@ class Attention(nn.Module):
         self.compression_type = args.compression_type
         self.max_seq_len = args.max_seq_len
         self.compression_attribute = args.compression_attribute
+        self.tm = args.tm
 
         self.wq = ColumnParallelLinear(
             args.dim,
@@ -296,6 +305,9 @@ class Attention(nn.Module):
             torch.Tensor: Output tensor after attention.
 
         """
+        if self.tm is not None:
+            self.tm.start_measure('attention')
+
         bsz, seqlen, _ = x.shape
         xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
 
@@ -362,7 +374,10 @@ class Attention(nn.Module):
         scores = F.softmax(scores.float(), dim=-1).type_as(xq)
         output = torch.matmul(scores, values)  # (bs, n_local_heads, seqlen, head_dim)
         output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
-        return self.wo(output)
+        res = self.wo(output)
+        if self.tm is not None:
+            self.tm.end_measure('attention')
+        return res
 
 
 class FeedForward(nn.Module):
@@ -372,6 +387,7 @@ class FeedForward(nn.Module):
         hidden_dim: int,
         multiple_of: int,
         ffn_dim_multiplier: Optional[float],
+        tm: TimeMeasure = None,
     ):
         """
         Initialize the FeedForward module.
@@ -404,11 +420,18 @@ class FeedForward(nn.Module):
         self.w3 = ColumnParallelLinear(
             dim, hidden_dim, bias=False, gather_output=False, init_method=lambda x: x
         )
+        self.tm = tm
 
     def forward(self, x):
         # pdb.set_trace()
         # print(x.shape)
-        return self.w2(F.silu(self.w1(x)) * self.w3(x))
+        # pdb.set_trace()
+        if self.tm is not None:
+            self.tm.start_measure('ffn')
+        res = self.w2(F.silu(self.w1(x)) * self.w3(x))
+        if self.tm is not None:
+            self.tm.end_measure('ffn')
+        return res
 
 class SkippedFFN(nn.Module):
     def __init__(self):
@@ -503,10 +526,12 @@ class TransformerBlock(nn.Module):
                 hidden_dim=4 * args.dim,
                 multiple_of=args.multiple_of,
                 ffn_dim_multiplier=args.ffn_dim_multiplier,
+                tm=args.tm,
             )
         self.layer_id = layer_id
-        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
-        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
+        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps, tm=args.tm)
+        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps, tm=args.tm)
+        self.tm = args.tm
 
     def forward(
         self,
@@ -528,10 +553,16 @@ class TransformerBlock(nn.Module):
             torch.Tensor: Output tensor after applying attention and feedforward layers.
 
         """
+        if self.tm is not None:
+            self.tm.start_measure('transformer_block')
+        
         h = x + self.attention.forward(
             self.attention_norm(x), start_pos, freqs_cis, mask
         )
         out = h + self.feed_forward.forward(self.ffn_norm(h))
+
+        if self.tm is not None:
+            self.tm.end_measure('transformer_block')
         return out
 
 
@@ -567,7 +598,7 @@ class Transformer(nn.Module):
         for layer_id in range(params.n_layers):
             self.layers.append(TransformerBlock(layer_id, params))
 
-        self.norm = RMSNorm(params.dim, eps=params.norm_eps)
+        self.norm = RMSNorm(params.dim, eps=params.norm_eps, tm=params.tm)
         self.output = ColumnParallelLinear(
             params.dim, params.vocab_size, bias=False, init_method=lambda x: x
         )
@@ -577,6 +608,7 @@ class Transformer(nn.Module):
             # Adding this multiplier instead of using 4096 directly allows for dynamism of token lengths while training or fine-tuning.
             self.params.dim // self.params.n_heads, self.params.max_seq_len * 2
         )
+        self.tm = params.tm
 
     @torch.inference_mode()
     def forward(self, tokens: torch.Tensor, start_pos: int):
@@ -591,6 +623,9 @@ class Transformer(nn.Module):
             torch.Tensor: Output logits after applying the Transformer model.
 
         """
+        if self.tm is not None:
+            self.tm.start_measure('transformer')
+
         _bsz, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
         self.freqs_cis = self.freqs_cis.to(h.device)
@@ -617,4 +652,8 @@ class Transformer(nn.Module):
             h = layer(h, start_pos, freqs_cis, mask)
         h = self.norm(h)
         output = self.output(h).float()
+
+        if self.tm is not None:
+            self.tm.end_measure('transformer')
+
         return output
