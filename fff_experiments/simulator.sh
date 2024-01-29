@@ -11,7 +11,7 @@ simulated_dir="./../llama-2-7b"
 
 num_iterations=1
 
-use_cpu=1
+use_cpu=0
 
 fff_depths=(-1 0)
 
