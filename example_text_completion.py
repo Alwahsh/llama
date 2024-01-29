@@ -24,6 +24,7 @@ def main(
     compression_attribute: int = 10,
     warmup_iterations: int = 10,
     measured_iterations: int = 10,
+    use_cpu: bool = False,
 ):
     """
     Entry point of the program for generating text using a pretrained model.
@@ -51,6 +52,7 @@ def main(
         disable_eos=disable_eos,
         compression_type = compression_type,
         compression_attribute = compression_attribute,
+        use_cpu = use_cpu,
     )
 
     prompts: List[str] = [

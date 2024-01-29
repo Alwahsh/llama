@@ -17,6 +17,7 @@ from fairscale.nn.model_parallel.initialize import (
     model_parallel_is_initialized,
 )
 
+import pdb
 from llama.model import ModelArgs, Transformer
 from llama.tokenizer import Tokenizer
 
@@ -64,6 +65,7 @@ class Llama:
         disable_eos: bool = False,
         compression_type: int = -1,
         compression_attribute: int = 10,
+        use_cpu: bool = False,
     ) -> "Llama":
         """
         Build a Llama instance by initializing and loading a pre-trained model.
@@ -96,7 +98,9 @@ class Llama:
             initialize_model_parallel(model_parallel_size)
 
         local_rank = int(os.environ.get("LOCAL_RANK", 0))
-        torch.cuda.set_device(local_rank)
+        # pdb.set_trace()
+        if not(use_cpu):
+            torch.cuda.set_device(local_rank)
 
         # seed must be the same in all processes
         torch.manual_seed(seed)
@@ -122,11 +126,13 @@ class Llama:
             compression_attribute=compression_attribute,
             tm=tm,
             fff_depth=fff_depth,
+            use_cpu=use_cpu,
             **params,
         )
         tokenizer = Tokenizer(model_path=tokenizer_path)
         model_args.vocab_size = tokenizer.n_words
-        torch.set_default_tensor_type(torch.cuda.HalfTensor)
+        if not(use_cpu):
+            torch.set_default_tensor_type(torch.cuda.HalfTensor)
         model = Transformer(model_args)
         # Disable loading from the checkpoint to get random weights by commenting the line below.
         if load_weights:
@@ -187,14 +193,18 @@ class Llama:
         total_len = min(params.max_seq_len, max_gen_len + max_prompt_len) # NOTE: This is the line that sets the maximum length.
 
         pad_id = self.tokenizer.pad_id
-        tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device="cuda")
+        if params.use_cpu:
+            device='cpu'
+        else:
+            device='cuda'
+        tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device=device)
         for k, t in enumerate(prompt_tokens):
-            tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device="cuda")
+            tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device=device)
         if logprobs:
             token_logprobs = torch.zeros_like(tokens, dtype=torch.float)
 
         prev_pos = 0
-        eos_reached = torch.tensor([False] * bsz, device="cuda")
+        eos_reached = torch.tensor([False] * bsz, device=device)
         input_text_mask = tokens != pad_id
         if min_prompt_len == total_len:
             logits = self.model.forward(tokens, prev_pos)

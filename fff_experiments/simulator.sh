@@ -11,6 +11,8 @@ simulated_dir="./../llama-2-7b"
 
 num_iterations=1
 
+use_cpu=1
+
 fff_depths=(-1 0)
 
 batch_sizes=(1 2 4 8 16 32 64)
@@ -37,7 +39,7 @@ for ((i=1; i<=$num_iterations; i++)); do
                 if ((gen_len - in_seq_len >= 2)); then
                     # Simulate for each FFF Depth
                     for fff_depth in "${fff_depths[@]}"; do
-                        torchrun --nproc_per_node $mp_val ./../example_text_completion.py --ckpt_dir $simulated_dir/ --tokenizer_path ./../tokenizer.model --max_seq_len $gen_len --max_gen_len $gen_len --max_batch_size $batch_size --disable_eos 1 --in_seq_len $in_seq_len --fff_depth $fff_depth --warmup_iterations $warmup_iterations --measured_iterations $measured_iterations
+                        torchrun --nproc_per_node $mp_val ./../example_text_completion.py --ckpt_dir $simulated_dir/ --tokenizer_path ./../tokenizer.model --max_seq_len $gen_len --max_gen_len $gen_len --max_batch_size $batch_size --disable_eos 1 --in_seq_len $in_seq_len --fff_depth $fff_depth --warmup_iterations $warmup_iterations --measured_iterations $measured_iterations --use_cpu $use_cpu
                         for ((k=0; k<$measured_iterations; k++)); do
                             measured_time_prefill=$(cat time_prefill_$k.txt)
                             measured_time_decode=$(cat time_decode_$k.txt)

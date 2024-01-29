@@ -41,6 +41,7 @@ class ModelArgs:
     fff_depth: int = -1
     compression_type: int = -1
     compression_attribute: int = 10
+    use_cpu: bool = False
     # skip_ffn: bool = False
 
 class RMSNorm(torch.nn.Module):
@@ -253,7 +254,6 @@ class Attention(nn.Module):
             input_is_parallel=True,
             init_method=lambda x: x,
         )
-
         self.cache_k = torch.zeros(
             (
                 args.max_batch_size,
@@ -261,7 +261,8 @@ class Attention(nn.Module):
                 self.n_local_kv_heads,
                 self.head_dim,
             )
-        ).cuda()
+        )
+
         self.cache_v = torch.zeros(
             (
                 args.max_batch_size,
@@ -269,7 +270,12 @@ class Attention(nn.Module):
                 self.n_local_kv_heads,
                 self.head_dim,
             )
-        ).cuda()
+        )
+
+        if (not(args.use_cpu)):
+            self.cache_k = self.cache_k.cuda()
+        else:
+            self.cache_v = self.cache_v.cuda()
     
     def compress(self, compression_type: int, compression_attribute: int):
         if compression_type == 1: # Lossless
