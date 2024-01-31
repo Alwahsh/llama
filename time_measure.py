@@ -1,6 +1,7 @@
 import time
 import json
 import csv
+import torch
 
 class TimeMeasure:
     def __init__(self):
@@ -38,6 +39,7 @@ class TimeMeasure:
     def end_measure(self, name):
         if not(self.tracking):
             return
+        torch.cuda.synchronize()
         cur_time = time.perf_counter() - self.cur_start_times()[name]
         if name in self.cur_times():
             self.cur_times()[name].append(cur_time)

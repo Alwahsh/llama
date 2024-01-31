@@ -45,7 +45,7 @@ class ModelArgs:
     # skip_ffn: bool = False
 
 class RMSNorm(torch.nn.Module):
-    def __init__(self, dim: int, eps: float = 1e-6, tm: TimeMeasure = None):
+    def __init__(self, dim: int, eps: float = 1e-6, tm: TimeMeasure = None, stage: str = ''):
         """
         Initialize the RMSNorm normalization layer.
 
@@ -62,6 +62,7 @@ class RMSNorm(torch.nn.Module):
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
         self.tm = tm
+        self.stage = stage
 
     def _norm(self, x):
         """
@@ -88,11 +89,11 @@ class RMSNorm(torch.nn.Module):
 
         """
         if self.tm is not None:
-            self.tm.start_measure('rms_norm')
+            self.tm.start_measure(f'{self.stage}_rms_norm')
         output = self._norm(x.float()).type_as(x)
         res = output * self.weight
         if self.tm is not None:
-            self.tm.end_measure('rms_norm')
+            self.tm.end_measure(f'{self.stage}_rms_norm')
         return res
 
 
@@ -535,8 +536,8 @@ class TransformerBlock(nn.Module):
                 tm=args.tm,
             )
         self.layer_id = layer_id
-        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps, tm=args.tm)
-        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps, tm=args.tm)
+        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps, tm=args.tm, stage='attention')
+        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps, tm=args.tm, stage='ffn')
         self.tm = args.tm
 
     def forward(
@@ -604,7 +605,7 @@ class Transformer(nn.Module):
         for layer_id in range(params.n_layers):
             self.layers.append(TransformerBlock(layer_id, params))
 
-        self.norm = RMSNorm(params.dim, eps=params.norm_eps, tm=params.tm)
+        self.norm = RMSNorm(params.dim, eps=params.norm_eps, tm=params.tm, stage='transformer')
         self.output = ColumnParallelLinear(
             params.dim, params.vocab_size, bias=False, init_method=lambda x: x
         )

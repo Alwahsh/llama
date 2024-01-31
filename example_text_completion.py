@@ -105,8 +105,12 @@ def main(
             file.write(str(times['prefill']['total'][0]))
         with open(f'time_decode_{i}.txt', 'w') as file:
             file.write(str(sum(times['decode']['total'])))
-        with open(f'prefill_time_rms_norm_{i}.txt', 'w') as file:
-            file.write(str(sum(times['prefill']['rms_norm'])))
+        rms_stages = ['attention', 'ffn', 'transformer']
+        for stage in rms_stages:
+            with open(f'prefill_time_{stage}_rms_norm_{i}.txt', 'w') as file:
+                file.write(str(sum(times['prefill'][f'{stage}_rms_norm'])))
+            with open(f'decode_time_{stage}_rms_norm_{i}.txt', 'w') as file:
+                file.write(str(sum(times['decode'][f'{stage}_rms_norm'])))
         with open(f'prefill_time_attention_{i}.txt', mode='w') as file:
             file.write(str(sum(times['prefill']['attention'])))
         if 'ffn' in times['prefill']:
@@ -116,8 +120,6 @@ def main(
             file.write(str(sum(times['prefill']['transformer_block'])))
         with open(f'prefill_time_transformer_{i}.txt', 'w') as file:    
             file.write(str(sum(times['prefill']['transformer'])))
-        with open(f'decode_time_rms_norm_{i}.txt', 'w') as file:
-            file.write(str(sum(times['decode']['rms_norm'])))
         with open(f'decode_time_attention_{i}.txt', mode='w') as file:
             file.write(str(sum(times['decode']['attention'])))
         if 'ffn' in times['decode']:
