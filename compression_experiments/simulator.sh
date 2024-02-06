@@ -40,8 +40,8 @@ warmup_iterations=0
 
 measured_iterations=1
 
-echo "batch_size,compression_type,compression_attribute,gen_len,in_seq_len,time_prefill,time_decode,k_size,v_size,response" > $output_csv
-
+echo "id,batch_size,compression_type,compression_attribute,gen_len,in_seq_len,time_prefill,time_decode,k_size,v_size,response" > $output_csv
+id=0
 for ((i=1; i<=$num_iterations; i++)); do
     for compression_type in "${compression_types[@]}"; do
         for batch_size in "${batch_sizes[@]}"; do
@@ -60,7 +60,7 @@ for ((i=1; i<=$num_iterations; i++)); do
                         for compression_attribute in $compression_attributes; do
                             # Replace FFF Depth with the actual value
                             sed -i "s/TEMP_FFF_DEPTH/$fff_depth/g" "$destination_file"
-
+                            id=$((id+1))
                             torchrun --nproc_per_node $mp_val ./../example_text_completion.py --ckpt_dir $simulated_dir/ --tokenizer_path ./../tokenizer.model --max_seq_len $gen_len --max_gen_len $gen_len --max_batch_size $batch_size --disable_eos 0 --in_seq_len $in_seq_len --compression_type $compression_type --compression_attribute $compression_attribute --warmup_iterations $warmup_iterations --measured_iterations $measured_iterations
                             for ((k=0; k<$measured_iterations; k++)); do
                                 measured_time_prefill=$(cat time_prefill_$k.txt)
@@ -71,7 +71,8 @@ for ((i=1; i<=$num_iterations; i++)); do
                                 v_size=$(du -b v_cache.pkl | awk '{print $1}')
                                 response=$(cat response_$k.txt)
                                 echo "-1" > response_$k.txt
-                                echo "$batch_size,$compression_type,$compression_attribute,$gen_len,$in_seq_len,$measured_time_prefill,$measured_time_decode,$k_size,$v_size,$response" >> $output_csv
+                                echo "$id,$batch_size,$compression_type,$compression_attribute,$gen_len,$in_seq_len,$measured_time_prefill,$measured_time_decode,$k_size,$v_size,$response" >> $output_csv
+                                cp ./../cache_statistics.json $simulated_dir/cache_statistics_$id_$k.json
                             done
                         done
                     fi

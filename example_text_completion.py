@@ -2,6 +2,7 @@
 # This software may be used and distributed according to the terms of the Llama 2 Community License Agreement.
 
 import fire
+import json
 
 from llama import Llama
 from typing import List
@@ -83,7 +84,7 @@ def main(
     # Tokenize the text, cut to the requested seq_len, then dekonize it back as text.
     tokenizer = Tokenizer(model_path=tokenizer_path)
     text = tokenizer.encode(text, bos=True, eos=False)
-    text = text[:in_seq_len]
+    text = text[:max_seq_len]
     text = tokenizer.decode(text)
 
     prompts = [text] * max_batch_size
@@ -135,6 +136,9 @@ def main(
             file.write(str(sum(times['decode']['transformer_block'])))
         with open(f'decode_time_transformer_{i}.txt', 'w') as file:    
             file.write(str(sum(times['decode']['transformer'])))
+
+        with open(f'caching_statistics.json', 'w') as file:
+            json.dump(tm.get_all_custom_data(), file)
 
         # pdb.set_trace()
         tm.reset_stats()
