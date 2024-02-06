@@ -7,9 +7,26 @@ class TimeMeasure:
     def __init__(self):
         self.times = {}
         self.start_times = {}
+        self.custom_data = {}
         self.initial_time = time.perf_counter()
         self.current_prefix = None
         self.tracking = True
+
+    def replace_custom_data(self, name, data):
+        if not(self.tracking):
+            return
+        self.custom_data[name] = data
+
+    def append_custom_data(self, name, data):
+        if not(self.tracking):
+            return
+        if name in self.custom_data:
+            self.custom_data[name].append(data)
+        else:
+            self.custom_data[name] = [data]
+
+    def get_all_custom_data(self):
+        return self.custom_data
 
     def set_prefix(self, prefix):
         self.current_prefix = prefix
