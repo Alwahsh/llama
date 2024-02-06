@@ -19,7 +19,7 @@ def main(
     disable_eos: bool = False,
     fff_depth: int = -1,
     load_weights: bool = True,
-    in_seq_len: int = 1,
+    in_seq_len: int = 1, # If set to -1, it means to use the text at sample_input.txt. Would be used for compression experiments where real user input is desired.
     compression_type: int = -1, # -1 = normal code without considering compression at all. 0 = perform needed conversions but don't compress. 1 = perform needed operations and compress.
     compression_attribute: int = 10,
     warmup_iterations: int = 10,
@@ -77,9 +77,13 @@ def main(
         # "it is my destiny",
     ]
     text = ""
-    for _ in range(1,in_seq_len):
-        text += "it "
-    text = text.strip()
+    if in_seq_len == -1:
+        with open('sample_input.txt', 'r') as file:
+            text = file.read()
+    else:
+        for _ in range(1,in_seq_len):
+            text += "it "
+        text = text.strip()
     prompts = [text] * max_batch_size
     # Repeat the completion 10 times first.
     for _ in range(warmup_iterations):
