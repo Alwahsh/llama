@@ -83,7 +83,7 @@ def main(
     # Tokenize the text, cut to the requested seq_len, then dekonize it back as text.
     tokenizer = Tokenizer(model_path=tokenizer_path)
     text = tokenizer.encode(text, bos=True, eos=False)
-    text = text[:max_seq_len]
+    text = text[:in_seq_len]
     text = tokenizer.decode(text)
 
     prompts = [text] * max_batch_size
