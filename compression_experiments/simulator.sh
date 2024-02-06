@@ -1,27 +1,27 @@
 #!/bin/bash
 
-# Source and destination filenames
-source_file="params_templates/params7b.template"
-
-output_csv="simulated7b_results.csv"
+# Get current timestamp
+timestamp=$(date +%s)
+mkdir -p "${timestamp}_results"
+output_dir="${timestamp}_results"
+output_csv="${output_dir}/results.csv"
 
 mp_val=1
 
 simulated_dir="./../llama-2-7b"
-mkdir -p $simulated_dir
 
 destination_file="$simulated_dir/params.json"
 
 num_iterations=1
 
-# compression_types=(2 3 4 0 1)
-compression_types=(-1)
+compression_types=(2 3 4 1)
+# compression_types=(1)
 
 batch_sizes=(1)
 
-gen_lens=(2048)
+gen_lens=(64)
 
-in_seq_lens=(512)
+in_seq_lens=(62)
 
 # No compression
 compression_attributes_0=(0)
@@ -72,7 +72,7 @@ for ((i=1; i<=$num_iterations; i++)); do
                                 response=$(cat response_$k.txt)
                                 echo "-1" > response_$k.txt
                                 echo "$id,$batch_size,$compression_type,$compression_attribute,$gen_len,$in_seq_len,$measured_time_prefill,$measured_time_decode,$k_size,$v_size,$response" >> $output_csv
-                                cp ./../cache_statistics.json $simulated_dir/cache_statistics_$id_$k.json
+                                cp ./../cache_statistics.json $output_dir/cache_statistics_$id_$k.json
                                 echo "{}" > ./../cache_statistics.json
                             done
                         done
