@@ -13,18 +13,18 @@ num_iterations=1
 
 use_cpu=0
 
-fff_depths=(-1 0)
+fff_depths=(-1)
 
-batch_sizes=(1 16 32 64)
+batch_sizes=(2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)
 
 # gen_lens=(1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192)
-gen_lens=(2048)
+gen_lens=(-1) # gen_len = -1 means that you should have gen_len 2 > in_seq_len
 
 # in_seq_lens=(1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192)
 in_seq_lens=(1 2 4 8 16 32 64 128 256 512 1024 2046)
 
-warmup_iterations=10
-measured_iterations=10
+warmup_iterations=1
+measured_iterations=3
 
 echo "batch_size,fff_depth,gen_len,in_seq_len,time_prefill,time_decode,prefill_time_attention_rms_norm,prefill_time_ffn_rms_norm,prefill_time_transformer_rms_norm,prefill_time_attention,prefill_time_ffn,prefill_time_transformer_block,prefill_time_transformer,decode_time_attention_rms_norm,decode_time_ffn_rms_norm,decode_time_transformer_rms_norm,decode_time_attention,decode_time_ffn,decode_time_transformer_block,decode_time_transformer" > $output_csv
 
@@ -34,9 +34,15 @@ for ((i=1; i<=$num_iterations; i++)); do
     for fff_depth in "${fff_depths[@]}"; do
         for batch_size in "${batch_sizes[@]}"; do
             # Loop over gen_len values
-            for gen_len in "${gen_lens[@]}"; do
+            for gen_len_temp in "${gen_lens[@]}"; do
                 # Loop over in_seq_len values
                 for in_seq_len in "${in_seq_lens[@]}"; do
+                    # Set gen_len to in_seq_len + 2 if gen_len is -1
+                    if ((gen_len_temp == -1)); then
+                        gen_len=$((in_seq_len + 2))
+                    else
+                        gen_len=$gen_len_temp
+                    fi
                     # Only simulate if in_seq_len is smaller than gen_len
                     if ((gen_len - in_seq_len >= 2)); then
                         torchrun --nproc_per_node $mp_val ./../example_text_completion.py --ckpt_dir $simulated_dir/ --tokenizer_path ./../tokenizer.model --max_seq_len $gen_len --max_gen_len $gen_len --max_batch_size $batch_size --disable_eos 1 --in_seq_len $in_seq_len --fff_depth $fff_depth --warmup_iterations $warmup_iterations --measured_iterations $measured_iterations --use_cpu $use_cpu

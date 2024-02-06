@@ -11,6 +11,7 @@ import zfpy
 import numpy as np
 import pickle
 from time_measure import TimeMeasure
+import matplotlib.pyplot as plt
 
 import fairscale.nn.model_parallel.initialize as fs_init
 import torch
@@ -226,6 +227,7 @@ class Attention(nn.Module):
         self.compression_type = args.compression_type
         self.max_seq_len = args.max_seq_len
         self.compression_attribute = args.compression_attribute
+        self.layer_id = layer_id
         self.tm = args.tm
         self.layer_id = layer_id
 
@@ -350,6 +352,8 @@ class Attention(nn.Module):
         if self.compression_type != -1:
             self.compress(self.compression_type, self.compression_attribute)
             if start_pos == self.max_seq_len - 2:
+                # self.flatten_and_plot(self.cache_k, f'cache_k_{self.layer_id}')
+                # self.flatten_and_plot(self.cache_v, f'cache_v_{self.layer_id}')
                 with open('k_cache.pkl', 'wb') as file:
                     if self.compression_type != 0:
                         pickle.dump(self.compressed_k, file)
@@ -410,6 +414,7 @@ class Attention(nn.Module):
         if self.tm is not None:
             self.tm.end_measure('attention')
         return res
+
 
 
 class FeedForward(nn.Module):

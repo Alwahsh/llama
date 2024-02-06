@@ -1,26 +1,27 @@
 #!/bin/bash
 
 # Source and destination filenames
-source_file="params_templates/params13b.template"
+source_file="params_templates/params7b.template"
 
-output_csv="simulated13b_results.csv"
+output_csv="simulated7b_results.csv"
 
-mp_val=2
+mp_val=1
 
-simulated_dir="./../llama-2-13b"
+simulated_dir="./../llama-2-7b"
 mkdir -p $simulated_dir
 
 destination_file="$simulated_dir/params.json"
 
 num_iterations=1
 
-compression_types=(2 3 4 0 1)
+# compression_types=(2 3 4 0 1)
+compression_types=(-1)
 
 batch_sizes=(1)
 
-gen_lens=(64)
+gen_lens=(2048)
 
-in_seq_lens=(2)
+in_seq_lens=(512)
 
 # No compression
 compression_attributes_0=(0)
@@ -60,7 +61,7 @@ for ((i=1; i<=$num_iterations; i++)); do
                             # Replace FFF Depth with the actual value
                             sed -i "s/TEMP_FFF_DEPTH/$fff_depth/g" "$destination_file"
 
-                            torchrun --nproc_per_node $mp_val ./../example_text_completion.py --ckpt_dir $simulated_dir/ --tokenizer_path ./../tokenizer.model --max_seq_len $gen_len --max_gen_len $gen_len --max_batch_size $batch_size --disable_eos 1 --in_seq_len $in_seq_len --compression_type $compression_type --compression_attribute $compression_attribute --warmup_iterations $warmup_iterations --measured_iterations $measured_iterations
+                            torchrun --nproc_per_node $mp_val ./../example_text_completion.py --ckpt_dir $simulated_dir/ --tokenizer_path ./../tokenizer.model --max_seq_len $gen_len --max_gen_len $gen_len --max_batch_size $batch_size --disable_eos 0 --in_seq_len $in_seq_len --compression_type $compression_type --compression_attribute $compression_attribute --warmup_iterations $warmup_iterations --measured_iterations $measured_iterations
                             for ((k=0; k<$measured_iterations; k++)); do
                                 measured_time_prefill=$(cat time_prefill_$k.txt)
                                 measured_time_decode=$(cat time_decode_$k.txt)

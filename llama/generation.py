@@ -185,6 +185,7 @@ class Llama:
         else:
             tm.disable_tracking()
         bsz = len(prompt_tokens)
+        print(f'Number of tokens: {len(prompt_tokens[0])}')
         assert bsz <= params.max_batch_size, (bsz, params.max_batch_size)
 
         min_prompt_len = min(len(t) for t in prompt_tokens)
