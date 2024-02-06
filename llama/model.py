@@ -5,6 +5,7 @@ import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
 import pdb
+import matplotlib.pyplot as plt
 # from pyzfp import compress, decompress
 import zfpy
 import numpy as np
@@ -194,7 +195,7 @@ def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
 
 class Attention(nn.Module):
     """Multi-head attention module."""
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: ModelArgs, layer_id: int = -1):
         """
         Initialize the Attention module.
 
@@ -226,6 +227,7 @@ class Attention(nn.Module):
         self.max_seq_len = args.max_seq_len
         self.compression_attribute = args.compression_attribute
         self.tm = args.tm
+        self.layer_id = layer_id
 
         self.wq = ColumnParallelLinear(
             args.dim,
@@ -291,6 +293,19 @@ class Attention(nn.Module):
         elif compression_type == 4: # Tolerance
             self.compressed_k = zfpy.compress_numpy(self.cache_k.to(torch.float32).cpu().numpy(), tolerance=compression_attribute)
             self.compressed_v = zfpy.compress_numpy(self.cache_v.to(torch.float32).cpu().numpy(), tolerance=compression_attribute)        
+
+    def flatten_and_plot(self,tensor, name):
+        flattened_tensor = tensor.cpu().flatten().to(torch.float32).numpy()
+
+        print(f'Uncompressed fp16: {tensor.nbytes}')
+        print(f'Uncompressed fp32: {tensor.to(torch.float32).nbytes}')
+        print(f'Compressed: {len(zfpy.compress_numpy(flattened_tensor, precision=8))}')
+        plt.figure(figsize=(10, 5))
+        plt.scatter(flattened_tensor, [0] * len(flattened_tensor), marker='|', color='b')
+        plt.xlabel('Value')
+        plt.title(f'Distribution of {name} Tensor')
+        plt.grid(True)
+        plt.savefig(f'{name}.png')
 
     def forward( 
         self,
@@ -365,6 +380,16 @@ class Attention(nn.Module):
                 self.cache_k = torch.from_numpy(zfpy.decompress_numpy(self.compressed_k)).to(xq)
                 self.cache_v = torch.from_numpy(zfpy.decompress_numpy(self.compressed_v)).to(xq)
 
+            # Data Capturing
+            if (self.compression_type != 0) and (start_pos == self.max_seq_len - 2):
+                # pdb.set_trace()
+                self.tm.replace_custom_data(f'compressed_k_{self.layer_id}', len(self.compressed_k))
+                self.tm.replace_custom_data(f'compressed_v_{self.layer_id}', len(self.compressed_v))
+                self.tm.replace_custom_data(f'cache_k_{self.layer_id}', self.cache_k.nbytes)
+                self.tm.replace_custom_data(f'cache_v_{self.layer_id}', self.cache_v.nbytes)
+                # self.flatten_and_plot(self.cache_k[:,: start_pos + seqlen], f'cache_k_{self.layer_id}')
+                # self.flatten_and_plot(self.cache_v[:,: start_pos + seqlen], f'cache_v_{self.layer_id}')
+
         keys = self.cache_k[:bsz, : start_pos + seqlen]
         values = self.cache_v[:bsz, : start_pos + seqlen]
 
@@ -417,7 +442,7 @@ class FeedForward(nn.Module):
         if ffn_dim_multiplier is not None:
             hidden_dim = int(ffn_dim_multiplier * hidden_dim)
         hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
-
+        # pdb.set_trace()
         self.w1 = ColumnParallelLinear(
             dim, hidden_dim, bias=False, gather_output=False, init_method=lambda x: x
         )
@@ -522,7 +547,7 @@ class TransformerBlock(nn.Module):
         self.n_heads = args.n_heads
         self.dim = args.dim
         self.head_dim = args.dim // args.n_heads
-        self.attention = Attention(args)
+        self.attention = Attention(args, layer_id)
         if args.fff_depth == 0:
             self.feed_forward = SkippedFFN()
         elif args.fff_depth > 0:
