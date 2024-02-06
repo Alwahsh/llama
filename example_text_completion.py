@@ -84,7 +84,7 @@ def main(
     # Tokenize the text, cut to the requested seq_len, then dekonize it back as text.
     tokenizer = Tokenizer(model_path=tokenizer_path)
     text = tokenizer.encode(text, bos=True, eos=False)
-    text = text[:max_seq_len]
+    text = text[:in_seq_len]
     text = tokenizer.decode(text)
 
     prompts = [text] * max_batch_size
@@ -106,7 +106,7 @@ def main(
             track_performance = True,
         )
         # print(f"Results are {results}")
-        # pdb.set_trace()
+
         times = tm.all_times()
         with open(f'time_prefill_{i}.txt', 'w') as file:
             file.write(str(times['prefill']['total'][0]))
@@ -137,7 +137,7 @@ def main(
         with open(f'decode_time_transformer_{i}.txt', 'w') as file:    
             file.write(str(sum(times['decode']['transformer'])))
 
-        with open(f'caching_statistics.json', 'w') as file:
+        with open(f'caching_statistics_{i}.json', 'w') as file:
             json.dump(tm.get_all_custom_data(), file)
 
         # pdb.set_trace()

@@ -19,9 +19,9 @@ compression_types=(2 3 4 1)
 
 batch_sizes=(1)
 
-gen_lens=(64)
+gen_lens=(512)
 
-in_seq_lens=(62)
+in_seq_lens=(510)
 
 # No compression
 compression_attributes_0=(0)
@@ -72,8 +72,8 @@ for ((i=1; i<=$num_iterations; i++)); do
                                 response=$(cat response_$k.txt)
                                 echo "-1" > response_$k.txt
                                 echo "$id,$batch_size,$compression_type,$compression_attribute,$gen_len,$in_seq_len,$measured_time_prefill,$measured_time_decode,$k_size,$v_size,$response" >> $output_csv
-                                cp ./../cache_statistics.json $output_dir/cache_statistics_$id_$k.json
-                                echo "{}" > ./../cache_statistics.json
+                                cp ./caching_statistics_$k.json $output_dir/caching_statistics_${id}_${k}.json
+                                echo "{}" > ./caching_statistics_$k.json
                             done
                         done
                     fi
