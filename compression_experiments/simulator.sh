@@ -73,6 +73,7 @@ for ((i=1; i<=$num_iterations; i++)); do
                                 echo "-1" > response_$k.txt
                                 echo "$id,$batch_size,$compression_type,$compression_attribute,$gen_len,$in_seq_len,$measured_time_prefill,$measured_time_decode,$k_size,$v_size,$response" >> $output_csv
                                 cp ./../cache_statistics.json $simulated_dir/cache_statistics_$id_$k.json
+                                echo "{}" > ./../cache_statistics.json
                             done
                         done
                     fi
