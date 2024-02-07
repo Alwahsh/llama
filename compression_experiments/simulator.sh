@@ -6,9 +6,9 @@ mkdir -p "${timestamp}_results"
 output_dir="${timestamp}_results"
 output_csv="${output_dir}/results.csv"
 
-mp_val=1
+mp_val=2
 
-simulated_dir="./../llama-2-7b"
+simulated_dir="./../llama-2-13b"
 
 destination_file="$simulated_dir/params.json"
 
@@ -19,9 +19,9 @@ compression_types=(2 3 4 1)
 
 batch_sizes=(1)
 
-gen_lens=(512)
+gen_lens=(-1)
 
-in_seq_lens=(510)
+in_seq_lens=(14 30 126 254 510 1022 2046 4094)
 
 # No compression
 compression_attributes_0=(0)
@@ -32,7 +32,7 @@ compression_attributes_2=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)
 # Rate
 compression_attributes_3=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)
 # Tolerance
-compression_attributes_4=(1e-6 1e-5 1e-4 1e-3 1e-2 1e-1 1)
+compression_attributes_4=(1e-6 1e-5 1e-4 1e-3 1e-2 1e-1 1 5 10 50 100 500 1000 5000 10000)
 
 fff_depth=-1
 
@@ -46,9 +46,14 @@ for ((i=1; i<=$num_iterations; i++)); do
     for compression_type in "${compression_types[@]}"; do
         for batch_size in "${batch_sizes[@]}"; do
             # Loop over gen_len values
-            for gen_len in "${gen_lens[@]}"; do
+            for gen_len_temp in "${gen_lens[@]}"; do
                 # Loop over in_seq_len values
                 for in_seq_len in "${in_seq_lens[@]}"; do
+                    if ((gen_len_temp == -1)); then
+                        gen_len=$((in_seq_len + 2))
+                    else
+                        gen_len=$gen_len_temp
+                    fi
                     # Only simulate if in_seq_len is smaller than gen_len
                     if ((gen_len - in_seq_len >= 2)); then
                         # Simulate for each FFF Depth
