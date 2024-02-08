@@ -143,7 +143,7 @@ def main(
         # pdb.set_trace()
         tm.reset_stats()
         with open(f'response_{i}.txt', 'w') as file:
-            file.write(results[0]["generation"].replace("\n","\\n"))
+            file.write(results[0]["generation"].replace("\n","\\n").replace(",","comma"))
     # pdb.set_trace()
     for prompt, result in zip(prompts, results):
         print(prompt)
