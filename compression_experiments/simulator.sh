@@ -2,13 +2,14 @@
 
 # Get current timestamp
 timestamp=$(date +%s)
-mkdir -p "${timestamp}_results"
 output_dir="${timestamp}_results"
+mkdir -p $output_dir
 output_csv="${output_dir}/results.csv"
+mkdir -p $output_dir/caching
 
-mp_val=2
+mp_val=1
 
-simulated_dir="./../llama-2-13b"
+simulated_dir="./../llama-2-7b"
 
 destination_file="$simulated_dir/params.json"
 
@@ -39,6 +40,9 @@ fff_depth=-1
 warmup_iterations=0
 
 measured_iterations=1
+
+
+cp sample_input.txt $output_dir/sample_input.txt
 
 echo "id,batch_size,compression_type,compression_attribute,gen_len,in_seq_len,time_prefill,time_decode,k_size,v_size,response" > $output_csv
 id=0
@@ -77,7 +81,7 @@ for ((i=1; i<=$num_iterations; i++)); do
                                 response=$(cat response_$k.txt)
                                 echo "-1" > response_$k.txt
                                 echo "$id,$batch_size,$compression_type,$compression_attribute,$gen_len,$in_seq_len,$measured_time_prefill,$measured_time_decode,$k_size,$v_size,$response" >> $output_csv
-                                cp ./caching_statistics_$k.json $output_dir/caching_statistics_${id}_${k}.json
+                                cp ./caching_statistics_$k.json $output_dir/caching/caching_statistics_${id}_${k}.json
                                 echo "{}" > ./caching_statistics_$k.json
                             done
                         done
