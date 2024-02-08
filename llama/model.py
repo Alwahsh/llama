@@ -230,6 +230,10 @@ class Attention(nn.Module):
         self.layer_id = layer_id
         self.tm = args.tm
         self.layer_id = layer_id
+        self.scale_k = -1
+        self.min_value_k = -1
+        self.scale_v = -1
+        self.min_value_v = -1
 
         self.wq = ColumnParallelLinear(
             args.dim,
@@ -281,7 +285,24 @@ class Attention(nn.Module):
             self.cache_k = self.cache_k.cuda()
         else:
             self.cache_v = self.cache_v.cuda()
-    
+
+    def quantize(self, tensor, num_bits):
+        min_val = torch.min(tensor)
+        max_val = torch.max(tensor)
+        qrange = 2 ** num_bits - 1
+        scale = (max_val - min_val) / qrange
+
+        # shift tensor to the positive domain
+        tensor_shifted = tensor - min_val
+
+        # scale to 0-255 and round to nearest integer
+        quantized = torch.round(tensor_shifted / scale).byte()
+
+        return quantized, min_val, scale
+
+    def dequantize(self, quantized, min_val, scale):
+        return (quantized.float() * scale) + min_val
+
     def compress(self, compression_type: int, compression_attribute: int):
         if compression_type == 1: # Lossless
             self.compressed_k = zfpy.compress_numpy(self.cache_k.to(torch.float32).cpu().numpy())
@@ -294,7 +315,11 @@ class Attention(nn.Module):
             self.compressed_v = zfpy.compress_numpy(self.cache_v.to(torch.float32).cpu().numpy(), rate=compression_attribute)
         elif compression_type == 4: # Tolerance
             self.compressed_k = zfpy.compress_numpy(self.cache_k.to(torch.float32).cpu().numpy(), tolerance=compression_attribute)
-            self.compressed_v = zfpy.compress_numpy(self.cache_v.to(torch.float32).cpu().numpy(), tolerance=compression_attribute)        
+            self.compressed_v = zfpy.compress_numpy(self.cache_v.to(torch.float32).cpu().numpy(), tolerance=compression_attribute)
+        elif compression_type == 5: # Quantization
+            self.compressed_k, self.min_value_k, self.scale_k = self.quantize(self.cache_k, compression_attribute)
+            self.compressed_v, self.min_value_v, self.scale_v = self.quantize(self.cache_v, compression_attribute)
+
 
     def flatten_and_plot(self,tensor, name):
         flattened_tensor = tensor.cpu().flatten().to(torch.float32).numpy()
@@ -380,15 +405,30 @@ class Attention(nn.Module):
                         # print("Compression Type = 0")
                         self.cache_v = torch.from_numpy(pickle.load(file)).to(xq)
             # Fetch kv values from the compressed if there's compression.
-            elif self.compression_type != 0:
+            # Else check if compression type is between 1-4 and fetch the compressed values.
+            elif self.compression_type in range(1, 4+1):
                 self.cache_k = torch.from_numpy(zfpy.decompress_numpy(self.compressed_k)).to(xq)
                 self.cache_v = torch.from_numpy(zfpy.decompress_numpy(self.compressed_v)).to(xq)
+            elif self.compression_type == 5:
+                self.cache_k = self.dequantize(self.compressed_k, self.min_value_k, self.scale_k)
+                self.cache_v = self.dequantize(self.compressed_v, self.min_value_v, self.scale_v)
+
 
             # Data Capturing
             if (self.compression_type != 0) and (start_pos == self.max_seq_len - 2):
                 # pdb.set_trace()
-                self.tm.replace_custom_data(f'compressed_k_{self.layer_id}', len(self.compressed_k))
-                self.tm.replace_custom_data(f'compressed_v_{self.layer_id}', len(self.compressed_v))
+                if isinstance(self.compressed_k, torch.Tensor):
+                    compressed_k_len = self.compressed_k.nbytes
+                else:
+                    compressed_k_len = len(self.compressed_k)
+
+                if isinstance(self.compressed_v, torch.Tensor):
+                    compressed_v_len = self.compressed_v.nbytes
+                else:
+                    compressed_v_len = len(self.compressed_v)
+
+                self.tm.replace_custom_data(f'compressed_k_{self.layer_id}', compressed_k_len)
+                self.tm.replace_custom_data(f'compressed_v_{self.layer_id}', compressed_v_len)
                 self.tm.replace_custom_data(f'cache_k_{self.layer_id}', self.cache_k.nbytes)
                 self.tm.replace_custom_data(f'cache_v_{self.layer_id}', self.cache_v.nbytes)
                 # self.flatten_and_plot(self.cache_k[:,: start_pos + seqlen], f'cache_k_{self.layer_id}')
