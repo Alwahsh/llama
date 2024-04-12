@@ -444,10 +444,19 @@ class Attention(nn.Module):
         xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
         keys = keys.transpose(1, 2) # (bs, n_local_heads, cache_len + seqlen, head_dim)
         values = values.transpose(1, 2) # (bs, n_local_heads, cache_len + seqlen, head_dim)
-        scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
+        logits = torch.matmul(xq, keys.transpose(2, 3))
+        scores = logits / math.sqrt(self.head_dim)
+        # pdb.set_trace()
         if mask is not None:
+            logits = logits + mask
             scores = scores + mask  # (bs, n_local_heads, seqlen, cache_len + seqlen)
+        # Append to CSV file, the layer number, the head number and the scores matrix of the 16x16 attention matrix.
+        with open('attention_scores.csv', 'a') as file:
+            for h in range(self.n_local_heads):
+                file.write(f'{self.layer_id},{h},"{",".join([str(int(num)) if not num.isinf() else "inf" for num in torch.flatten(scores[0,h,:,:])])}"\n')
+
         scores = F.softmax(scores.float(), dim=-1).type_as(xq)
+
         output = torch.matmul(scores, values)  # (bs, n_local_heads, seqlen, head_dim)
         output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
         res = self.wo(output)
