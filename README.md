@@ -1,3 +1,24 @@
+# Replication Project
+
+This is the codebase of LLama 2. A modification was done to capture the attention scores to replicate Figure 2 in the [Attention Sink paper](https://arxiv.org/pdf/2309.17453.pdf).
+
+## Replicated Figures:
+
+The replicated figures can be seen in the notebook [analyzer.ipynb](attention_maps_experiments/analyzer.ipynb).
+
+## Analysis:
+
+While the resulting heatmaps are not exactly the same as those in the original figure in the paper, the main result is clear in the replicated heatmaps. Attention Scores are clearly very high for the first token at different layers except for the first 2 layers.
+
+## Differences from the description in the paper:
+
+* While the paper mentions in the figure caption that the heatmap shows the average of the attention logits, plotting the logits resulted in different values, much higher than those reported in the paper. I plotted the average attention scores instead which are much closer to the values in the paper and I believe that's what was drawn in the paper.
+* The paper does not mention where the 250 sentences that were used for testing came from. I generated 250 random sentences using an LLM and used them for testing.
+
+---
+Rest of the Readme is the original Readme of the LLama 2 repository.
+---
+
 # Llama 2
 
 We are unlocking the power of large language models. Our latest version of Llama is now accessible to individuals, creators, researchers and businesses of all sizes so that they can experiment, innovate and scale their ideas responsibly. 
